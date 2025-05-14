@@ -1,17 +1,39 @@
-const ProxyChain = require('proxy-chain');
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 
-const server = new ProxyChain.Server({
-    port: 8080,
-    // هذه الدالة تُستدعى عند كل طلب يدخل عبر البروكسي
-    prepareRequestFunction: ({ request }) => {
-        console.log(`send:: ${request.url}`);
-        return {
-            requestAuthentication: false,
-            upstreamProxyUrl: null, // لا نريد تحويل الطلب إلى بروكسي خارجي
-        };
-    },
+const PORT = 8080;
+
+const server = http.createServer((req, res) => {
+  // استخراج عنوان الموقع من المسار
+  const targetUrl = req.url.slice(1); // إزالة أول "/"
+  
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    return res.end('يرجى كتابة العنوان كاملاً مع http:// أو https://');
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(targetUrl);
+  } catch (err) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    return res.end('الرابط غير صالح');
+  }
+
+  const protocol = parsedUrl.protocol === 'https:' ? https : http;
+
+  const proxyReq = protocol.get(targetUrl, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (err) => {
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('حدث خطأ أثناء الاتصال: ' + err.message);
+  });
 });
 
-server.listen(() => {
-    console.log('خادم البروكسي يعمل على المنفذ 8080');
+server.listen(PORT, () => {
+  console.log(`Proxy server running on http://localhost:${PORT}`);
 });
