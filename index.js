@@ -1,39 +1,25 @@
 const http = require('http');
-const https = require('https');
-const { URL } = require('url');
+const url = require('url');
+const httpProxy = require('http-proxy');
 
-const PORT = 8080;
+// إنشاء البروكسي
+const proxy = httpProxy.createProxyServer({ changeOrigin: true });
 
-const server = http.createServer((req, res) => {
-  // استخراج عنوان الموقع من المسار
-  const targetUrl = req.url.slice(1); // إزالة أول "/"
-  
-  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    return res.end('يرجى كتابة العنوان كاملاً مع http:// أو https://');
-  }
+// إنشاء الخادم وتوجيه الطلبات إلى الهدف المحدد
+http.createServer((req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+    const query = parsedUrl.query;
 
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(targetUrl);
-  } catch (err) {
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    return res.end('الرابط غير صالح');
-  }
+    // تحقق من أن الكويري يحتوي على قيمة صالحة
+    if (!query.url) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Error: URL query parameter is missing or invalid');
+        return;
+    }
 
-  const protocol = parsedUrl.protocol === 'https:' ? https : http;
+    console.log(`Requesting URL: ${query.url}`);
 
-  const proxyReq = protocol.get(targetUrl, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
-  });
-
-  proxyReq.on('error', (err) => {
-    res.writeHead(500, { 'Content-Type': 'text/plain' });
-    res.end('حدث خطأ أثناء الاتصال: ' + err.message);
-  });
-});
-
-server.listen(PORT, () => {
-  console.log(`Proxy server running on http://localhost:${PORT}`);
+    proxy.web(req, res, { target: `https://${query.url}` });
+}).listen(3000, () => {
+  console.log('Proxy running at http://localhost:3000');
 });
